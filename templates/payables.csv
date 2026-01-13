@@ -1,0 +1,3 @@
+vendor,amount,due_date,priority
+Packaging Co,2400.00,2024-10-10,critical
+Logistics Partner,5400.00,2024-10-12,deferrable

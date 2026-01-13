@@ -1,0 +1,3 @@
+supplier,sku,quantity,unit_cost,promised_date,received_date
+Supplier A,SKU-RED-42,200,12.50,2024-10-20,2024-10-18
+Supplier B,SKU-BLUE-10,300,10.00,2024-10-22,
