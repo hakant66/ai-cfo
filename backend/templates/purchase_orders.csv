@@ -1,0 +1,3 @@
+﻿supplier,created_at,promised_date,received_date,status,sku,quantity,unit_cost
+Alpha Supply,2026-01-01,2026-01-10,,open,SKU-100,100,12.50
+Beta Supply,2026-01-03,2026-01-15,2026-01-18,received,SKU-200,60,9.10

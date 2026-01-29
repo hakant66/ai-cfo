@@ -1,40 +1,77 @@
-import logging
-import uuid
-
-from fastapi import FastAPI, Request
+﻿from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.api import alerts, auth, chat, companies, connectors, health, imports, metrics
 from app.core.config import settings
+from app.core.logging import configure_logging, request_id_middleware
+from app.api.auth import router as auth_router
+from app.api.companies import router as companies_router
+from app.api.connectors import router as connectors_router
+from app.api.imports import router as imports_router
+from app.api.metrics import router as metrics_router
+from app.api.demo_data import router as demo_data_router
+from app.api.dify_tools import router as dify_tools_router
+from app.api.alerts import router as alerts_router
+from app.api.chat import router as chat_router
+from app.api.payables import router as payables_router
+from app.api.exchange_rates import router as exchange_rates_router
+from app.api.knowledge import router as knowledge_router
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("aicfo")
+configure_logging()
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title="AI CFO API")
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version="0.1.0",
+        routes=app.routes,
+    )
+    schema["servers"] = [
+        {"url": "http://localhost:8000"},
+        {"url": "http://127.0.0.1:8000"},
+        {"url": "http://host.docker.internal:8000"},
+        {"url": "http://backend:8000"},
+    ]
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+cors_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",")],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"] ,
-    allow_headers=["*"] ,
+    allow_methods=["*"] if settings.environment == "local" else ["GET", "POST"],
+    allow_headers=["*"] if settings.environment == "local" else ["Authorization", "Content-Type"],
 )
 
+app.middleware("http")(request_id_middleware)
 
-@app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    request_id = str(uuid.uuid4())
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    logger.info("request_completed", extra={"path": request.url.path, "request_id": request_id})
-    return response
+app.include_router(auth_router)
+app.include_router(companies_router)
+app.include_router(connectors_router)
+app.include_router(imports_router)
+app.include_router(metrics_router)
+app.include_router(demo_data_router)
+app.include_router(dify_tools_router)
+app.include_router(alerts_router)
+app.include_router(chat_router)
+app.include_router(payables_router)
+app.include_router(exchange_rates_router)
+app.include_router(knowledge_router)
 
 
-app.include_router(health.router)
-app.include_router(auth.router)
-app.include_router(companies.router)
-app.include_router(connectors.router)
-app.include_router(imports.router)
-app.include_router(metrics.router)
-app.include_router(alerts.router)
-app.include_router(chat.router)
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/metrics")
+def metrics():
+    return {"app": settings.app_name, "environment": settings.environment}

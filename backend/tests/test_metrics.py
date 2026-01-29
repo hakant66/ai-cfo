@@ -1,19 +1,28 @@
-from app.services.metrics import calculate_cash_forecast, calculate_weeks_of_cover, compute_alerts
+from datetime import datetime, timezone
+
+from app.models.models import Company, InventorySnapshot
+from app.services.metrics import get_inventory_health
 
 
-def test_calculate_weeks_of_cover():
-    assert calculate_weeks_of_cover(70, 10) == 1.0
-    assert calculate_weeks_of_cover(0, 0) == 0.0
+def test_inventory_health_weeks_of_cover_from_avg_daily_sales(db_session):
+    company = Company(name="Inventory Co", currency="USD", timezone="UTC", settlement_lag_days=2, thresholds={})
+    db_session.add(company)
+    db_session.commit()
 
+    today = datetime.now(timezone.utc).date()
+    sku = "SKU-TEST"
+    on_hand = 140
 
-def test_calculate_cash_forecast():
-    expected, best, worst = calculate_cash_forecast(1000, 800)
-    assert expected == 200
-    assert best == 220
-    assert worst == 180
+    db_session.add(InventorySnapshot(company_id=company.id, sku=sku, on_hand=on_hand, snapshot_date=today, source="manual"))
+    db_session.commit()
 
+    result = get_inventory_health(db_session, company_id=company.id)
+    assert result["items"]
 
-def test_alert_generation():
-    alerts = compute_alerts(db=None, company_id=1)
-    types = {alert.alert_type for alert in alerts}
-    assert {"spend_spike", "return_rate_jump", "supplier_delay"} == types
+    item = result["items"][0]
+    divisor = 7 + (sum(ord(char) for char in sku) % 4)
+    expected_avg = round(on_hand / divisor, 2)
+    expected_weeks = round(on_hand / expected_avg / 7, 2)
+
+    assert item["avg_daily_units_sold"] == expected_avg
+    assert item["weeks_of_cover"] == expected_weeks

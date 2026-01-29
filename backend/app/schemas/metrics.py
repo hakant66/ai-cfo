@@ -1,52 +1,45 @@
-from datetime import date, datetime
-from typing import List, Optional
-
-from pydantic import BaseModel
+﻿from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
 
 
 class MetricValue(BaseModel):
-    name: str
-    value: float
+    value: Any
     currency: Optional[str] = None
-    window: str
-    source_systems: List[str]
+    time_window: str
+    sources: List[str]
     provenance: str
-    last_refresh: datetime
+    last_refresh: str
+    query_id: str
 
 
-class MorningBriefResponse(BaseModel):
+class MorningBrief(BaseModel):
     cash_position: MetricValue
-    expected_cash_in: List[MetricValue]
-    expected_cash_out: List[MetricValue]
-    yesterday_performance: List[MetricValue]
-    inventory_health: List[MetricValue]
-    payables_due: List[MetricValue]
-    alerts: List[str]
+    expected_cash: Dict[str, MetricValue]
+    yesterday_performance: Dict[str, MetricValue]
+    inventory_health: Dict[str, MetricValue]
+    payables: Dict[str, MetricValue]
+    alerts: List[Dict[str, Any]]
     confidence: str
 
 
-class InventoryHealthRow(BaseModel):
+class InventoryHealthItem(BaseModel):
     sku: str
     on_hand: int
-    avg_daily_sales: float
+    avg_daily_units_sold: float
     weeks_of_cover: float
     stockout_risk: bool
     overstock_risk: bool
+    aged_inventory_days: Optional[int]
+
+
+class InventoryHealthResponse(BaseModel):
+    items: List[InventoryHealthItem]
+    confidence: str
 
 
 class CashForecastResponse(BaseModel):
-    days: int
-    expected: MetricValue
+    window_days: int
     best_case: MetricValue
+    expected: MetricValue
     worst_case: MetricValue
-
-
-class AlertResponse(BaseModel):
-    alert_type: str
-    severity: str
-    message: str
-    created_at: datetime
-
-
-class MorningBriefQuery(BaseModel):
-    date: date
+    confidence: str

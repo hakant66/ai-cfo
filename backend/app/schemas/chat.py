@@ -1,11 +1,4 @@
-from typing import List
-
-from pydantic import BaseModel
-
-
-class ToolResult(BaseModel):
-    metric_id: str
-    payload: dict
+﻿from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
@@ -14,4 +7,4 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    tool_results: List[ToolResult]
+    metrics_used: list

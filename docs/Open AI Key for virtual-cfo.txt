@@ -1,0 +1,7 @@
+Open AI Key for virtual-cfo
+Name: ai-virtual-cfo
+
+YOUR_OPENAI_API_KEY
+
+Permissions
+Read and write API resources

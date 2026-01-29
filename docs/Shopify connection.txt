@@ -1,0 +1,19 @@
+Shopify connection
+shopify mock user
+demo@aicfo.dev
+aicfo12345
+
+Demo Retail Co
+demo@aicfo.dev
+aicfo12345
+
+Mock Shopify Co
+demo2@mock.com
+aicfo12345
+
+Mock Enterprise Retail SA
+demo1@mock.de
+aicfo12345
+
+http://mock-shopify:8080
+mock_token_123

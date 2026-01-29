@@ -1,0 +1,17 @@
+Stripe API key
+
+Publishable key
+YOUR_STRIPE_PUBLISHABLE_KEY
+
+Secret key
+YOUR_STRIPE_SECRET_KEY
+
+Design a custom payment flow with embedded UI components.
+Embed a payment form on your site or redirect to a Stripe-hosted page.
+
+https://docs.stripe.com/
+
+
+Stripe backup code
+YOUR_STRIPE_BACKUP_CODE
+# Save this emergency backup code and store it somewhere safe. If you lose your device, this code can be used to disable two-step authentication and access your account.

@@ -1,0 +1,3 @@
+﻿vendor,amount,due_date,status,criticality
+Rent,2500,2026-01-05,open,critical
+Logistics,800,2026-01-08,open,deferrable
