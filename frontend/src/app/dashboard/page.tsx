@@ -228,7 +228,7 @@ export default function DashboardPage() {
               </button>
               <iframe
                 title="Dify Chatbot"
-                src="http://localhost/chatbot/OFVzpQeBmvdFUA7E"
+                src={`${(process.env.NEXT_PUBLIC_DIFY_BASE || "http://localhost").replace(/\\/+$/, "")}/chatbot/OFVzpQeBmvdFUA7E`}
                 className="h-[520px] w-[360px]"
               />
             </div>

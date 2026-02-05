@@ -5,19 +5,19 @@
       POSTGRES_PASSWORD: password
       POSTGRES_DB: ai_cfo
     ports:
-      - "5433:5432"
+      - "5544:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
     ports:
-      - "6380:6379"
+      - "6381:6379"
 
   mock-shopify:
     build: ./mock-shopify
     ports:
-      - "9000:8080"
+      - "9100:8080"
 
   backend:
     build: ./backend
@@ -34,7 +34,7 @@
     volumes:
       - ./backend/storage:/app/storage
     ports:
-      - "8000:8000"
+      - "8100:8000"
 
   wise-api:
     build: ./backend
@@ -50,7 +50,7 @@
       - db
       - redis
     ports:
-      - "8001:8001"
+      - "8101:8001"
 
   stripe-api:
     build: ./stripe-api
@@ -58,7 +58,7 @@
     env_file:
       - ./stripe-api/.env
     ports:
-      - "8002:8002"
+      - "8102:8002"
 
   worker:
     build: ./backend
@@ -79,17 +79,17 @@
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_BASE: http://127.0.0.1:8000
-        NEXT_PUBLIC_WISE_API_BASE: http://127.0.0.1:8001
+        NEXT_PUBLIC_API_BASE: https://api-aicfo.theleadai.co.uk
+        NEXT_PUBLIC_WISE_API_BASE: https://wise-aicfo.theleadai.co.uk
     env_file:
       - ./frontend/.env.example
     environment:
-      - NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
-      - NEXT_PUBLIC_WISE_API_BASE=http://127.0.0.1:8001
+      - NEXT_PUBLIC_API_BASE=https://api-aicfo.theleadai.co.uk
+      - NEXT_PUBLIC_WISE_API_BASE=https://wise-aicfo.theleadai.co.uk
       - DIFY_API_URL=http://127.0.0.1/v1
       - DIFY_API_KEY=
     ports:
-      - "3000:3000"
+      - "3100:3000"
     depends_on:
       - backend
       - wise-api

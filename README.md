@@ -1,14 +1,16 @@
 # AI Assistant (AI CFO) - Current Status
-Last updated: 2026-01-20
+Last updated: 2026-02-05
 
 ## Screenshots
 - Dashboard (Morning Brief)
 - Sales Quality
+- Sales Quality (True Net Margin)
 - Inventory
 - Payables
 - Wise Admin (Status + Settings)
 - Exchange Rates
 - Companies Admin
+- Stripe Admin (Settings + Sync)
 
 ## Business requirements
 - CFO-grade decision system with trusted metrics and provenance.
@@ -28,17 +30,19 @@ Last updated: 2026-01-20
 
 ## Features
 - Morning Brief dashboard with cash, sales, payables, alerts.
-- Sales Quality page with KPIs, mix, concentration, geography, currency.
+- Sales Quality page with KPIs, mix, concentration, geography, currency, True Net Margin (Stripe).
 - Inventory health monitoring with risk flags.
 - Payables table with due date and criticality.
 - Ask CFO chat with tool-calling and document search.
 - Exchange rates page with live refresh and manual override.
 - Wise connector (OAuth, sync, webhook ingestion).
-- Admin pages for companies, users, demo data, and Wise settings.
+- Stripe connector for revenue sync, balance/payout history, and True Net Margin metrics.
+- Admin pages for companies, users, demo data, Wise settings, and Stripe settings.
 
 ## Solution architecture
 - Frontend (Next.js) renders CFO workflows and admin tools.
 - Backend (FastAPI) provides REST APIs, auth, and metrics.
+- Stripe API service (FastAPI) pulls Stripe revenue, balance/payouts, and True Net Margin.
 - Postgres stores truth data, metrics, and connectors.
 - Celery + Redis run background jobs (Shopify sync, Wise sync, doc indexing).
 - Mock Shopify service for local demo data.
@@ -46,15 +50,18 @@ Last updated: 2026-01-20
 ## Technical stack
 - Frontend: Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, SWR, Zod
 - Backend: FastAPI, SQLAlchemy, Alembic, Pydantic
+- Stripe API: FastAPI (separate service)
 - Database: Postgres + pgvector
 - Jobs: Celery + Redis
 - Auth: JWT + RBAC
- - LLM Orchestration: OpenAI (fallback) + Dify Chatflow (primary)
+- LLM Orchestration: OpenAI (fallback) + Dify Chatflow (primary)
 
 ## Ask CFO via Dify (short guide)
-1) Expose tool endpoints at `http://127.0.0.1:8000/tools/*` (already wired).
-2) Open `http://127.0.0.1:8000/openapi.json` and import into Dify as Custom Tool.
-   - Server URL: `http://backend:8000`
+Dify is the primary LLM orchestration layer for Ask CFO in this repo: the backend exposes Dify tool endpoints (morning brief, cash forecast, inventory health, payables, doc search) that you import into a Dify Chatflow, and the frontend embeds the Dify chatbot via an iframe using `NEXT_PUBLIC_DIFY_BASE`. There is also a Dify-compatible external knowledge-base retrieval endpoint gated by `dify_external_kb_api_key`. If Dify is not configured, Ask CFO falls back to the local `/chat/ask` path.
+1) Expose tool endpoints at `http://127.0.0.1:8100/tools/*` (Docker Compose host port).
+2) Open `http://127.0.0.1:8100/openapi.json` and import into Dify as Custom Tool.
+   - Server URL (Dify in Docker network): `http://backend:8000`
+   - Server URL (Dify on host): `http://127.0.0.1:8100`
 3) Configure your Dify Chatflow to call:
    - `/tools/morning-brief`
    - `/tools/cash-forecast`
@@ -69,13 +76,17 @@ Start:
 ```
 docker compose up -d --build
 ```
-Note: If `NEXT_PUBLIC_API_BASE` is not set, the frontend uses `window.location.hostname` at runtime to build the API base, which makes the UI portable across machines without rebuilds. For remote Dify hosting, keep `NEXT_PUBLIC_DIFY_BASE`/`DIFY_API_URL` set explicitly.
+Note: If `NEXT_PUBLIC_API_BASE` is not set, the frontend uses `window.location.hostname` at runtime to build the API base, which makes the UI portable across machines without rebuilds. For local Docker Compose, set `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8100` and `NEXT_PUBLIC_WISE_API_BASE=http://127.0.0.1:8101` if you want the UI to call local APIs. For remote Dify hosting, keep `NEXT_PUBLIC_DIFY_BASE`/`DIFY_API_URL` set explicitly.
 Health checks:
-- Backend: `http://127.0.0.1:8000/health`
-- Frontend: `http://127.0.0.1:3000/login`
-Wise API (separate service on port 8001):
+- Backend: `http://127.0.0.1:8100/health`
+- Frontend: `http://127.0.0.1:3100/login`
+Wise API (separate service on port 8101):
 ```
-http://127.0.0.1:8001/health
+http://127.0.0.1:8101/health
+```
+Stripe API (separate service on port 8102):
+```
+http://127.0.0.1:8102/health
 ```
 Migrations:
 ```
@@ -115,15 +126,23 @@ docker compose down
 - Syncs profiles, balance accounts, balances, transactions.
 - Webhooks trigger incremental refresh.
 - Canonical mapping to bank_accounts, bank_balances, bank_transactions.
-- Admin UI: `http://127.0.0.1:3000/administrator/wise`.
+- Admin UI: `http://127.0.0.1:3100/administrator/wise`.
+
+## Stripe integration (new)
+- Admin UI to store Stripe account ID and trigger syncs: `http://127.0.0.1:3100/administrator/stripe`.
+- Revenue sync pulls Stripe charge history for 30 days.
+- Balance history + payouts sync includes CSV exports for finance reconciliation.
+- True Net Margin metrics pull Stripe fees and net amounts; optionally stored in `stripe_metrics`.
+- Backend uses `STRIPE_API_BASE` to call the Stripe API service.
+- Configure `stripe-api/.env` with `STRIPE_SECRET_KEY` (required) and `STRIPE_PUBLISHABLE_KEY` (optional).
 
 ### Wise environment variables
 Note: Wise credentials are encrypted with RSA using `WISE_PUBLIC_KEY`. The private key `WISE_PRIVATE_KEY` must be stored securely in env.
 ```
 WISE_CLIENT_ID=
 WISE_CLIENT_SECRET=
-WISE_REDIRECT_URI=http://127.0.0.1:8001/connectors/wise/oauth/callback
-WISE_WEBHOOK_URL=http://127.0.0.1:8001/webhooks/wise
+WISE_REDIRECT_URI=http://127.0.0.1:8101/connectors/wise/oauth/callback
+WISE_WEBHOOK_URL=http://127.0.0.1:8101/webhooks/wise
 WISE_OAUTH_SCOPES_READ=profile balance transactions
 WISE_OAUTH_SCOPES_WRITE=transfers
 WISE_WRITE_ENABLED=false
@@ -227,7 +246,16 @@ Documents
 Connectors
 - POST /connectors/shopify/test
 - POST /connectors/shopify/sync
-- (Wise service on http://127.0.0.1:8001)
+- Stripe (backend -> stripe-api)
+  - GET /connectors/stripe/settings
+  - POST /connectors/stripe/settings
+  - POST /connectors/stripe/sync-revenue
+  - POST /connectors/stripe/balance-payouts
+  - POST /connectors/stripe/metrics/true-net-margin
+  - POST /connectors/stripe/metrics/true-net-margin/store
+  - GET /connectors/stripe/metrics/true-net-margin
+  - DELETE /connectors/stripe/metrics/true-net-margin
+- (Wise service on http://127.0.0.1:8101)
   - GET /connectors/wise/oauth/start
   - GET /connectors/wise/oauth/callback
   - POST /connectors/wise/disconnect
@@ -238,12 +266,12 @@ Connectors
   - GET /connectors/wise/test
 
 Webhooks
-- (Wise service on http://127.0.0.1:8001)
+- (Wise service on http://127.0.0.1:8101)
   - POST /webhooks/wise
 
 Demo data
 - POST /demo-data/seed
- - DELETE /demo-data/clear
+- DELETE /demo-data/clear
 
 Tools (for Dify)
 - GET /tools/morning-brief
