@@ -36,9 +36,12 @@ class Settings(BaseSettings):
     wise_private_key: str = ""
     wise_api_token: str = ""
     stripe_api_base: str = "http://stripe-api:8002"
+    stripe_webhook_secret: str = ""
+    stripe_webhook_default_company_id: int | None = None
+    mock_stripe_webhook_secret: str = ""
     dify_external_kb_api_key: str = ""
 
-    @field_validator("primary_company_id", mode="before")
+    @field_validator("primary_company_id", "stripe_webhook_default_company_id", mode="before")
     @classmethod
     def _empty_primary_company(cls, value):
         if value in ("", None):

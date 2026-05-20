@@ -76,6 +76,7 @@ Start:
 ```
 docker compose up -d --build
 ```
+If you change backend Python code but `docker compose build backend` still shows every layer as **CACHED**, the running container may still use an old image. Use `docker compose build backend --no-cache` (or `docker compose up -d --build --force-recreate backend` after a no-cache build) so the new code is copied into the image.
 Note: If `NEXT_PUBLIC_API_BASE` is not set, the frontend uses `window.location.hostname` at runtime to build the API base, which makes the UI portable across machines without rebuilds. For local Docker Compose, set `NEXT_PUBLIC_API_BASE=http://127.0.0.1:8100` and `NEXT_PUBLIC_WISE_API_BASE=http://127.0.0.1:8101` if you want the UI to call local APIs. For remote Dify hosting, keep `NEXT_PUBLIC_DIFY_BASE`/`DIFY_API_URL` set explicitly.
 Health checks:
 - Backend: `http://127.0.0.1:8100/health`
@@ -129,12 +130,14 @@ docker compose down
 - Admin UI: `http://127.0.0.1:3100/administrator/wise`.
 
 ## Stripe integration (new)
+- Full architecture and Stripe object mapping: [docs/stripe-integration.md](docs/stripe-integration.md).
 - Admin UI to store Stripe account ID and trigger syncs: `http://127.0.0.1:3100/administrator/stripe`.
-- Revenue sync pulls Stripe charge history for 30 days.
+- Revenue sync (default 30 days) aggregates balance transactions, charges, and refunds via the `stripe-api` service.
 - Balance history + payouts sync includes CSV exports for finance reconciliation.
 - True Net Margin metrics pull Stripe fees and net amounts; optionally stored in `stripe_metrics`.
 - Backend uses `STRIPE_API_BASE` to call the Stripe API service.
 - Configure `stripe-api/.env` with `STRIPE_SECRET_KEY` (required) and `STRIPE_PUBLISHABLE_KEY` (optional).
+- Webhooks on the main API: set `STRIPE_WEBHOOK_SECRET` and point Stripe Dashboard to `https://<host>/webhooks/stripe`. Optional `MOCK_STRIPE_WEBHOOK_SECRET` enables `POST /webhooks/stripe/mock` for synthetic payout/refund/failed-charge events (see [docs/stripe-integration.md](docs/stripe-integration.md)).
 
 ### Wise environment variables
 Note: Wise credentials are encrypted with RSA using `WISE_PUBLIC_KEY`. The private key `WISE_PRIVATE_KEY` must be stored securely in env.
@@ -255,6 +258,9 @@ Connectors
   - POST /connectors/stripe/metrics/true-net-margin/store
   - GET /connectors/stripe/metrics/true-net-margin
   - DELETE /connectors/stripe/metrics/true-net-margin
+- Stripe webhooks (main backend, unsigned mock path for dev)
+  - POST /webhooks/stripe
+  - POST /webhooks/stripe/mock
 - (Wise service on http://127.0.0.1:8101)
   - GET /connectors/wise/oauth/start
   - GET /connectors/wise/oauth/callback

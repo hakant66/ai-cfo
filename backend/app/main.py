@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -15,6 +15,7 @@ from app.api.chat import router as chat_router
 from app.api.payables import router as payables_router
 from app.api.exchange_rates import router as exchange_rates_router
 from app.api.knowledge import router as knowledge_router
+from app.api.webhooks import router as webhooks_router
 
 configure_logging()
 
@@ -65,6 +66,7 @@ app.include_router(chat_router)
 app.include_router(payables_router)
 app.include_router(exchange_rates_router)
 app.include_router(knowledge_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/health")

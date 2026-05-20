@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, JSON, Enum, Date
 from sqlalchemy.orm import relationship
 import enum
@@ -95,6 +95,20 @@ class StripeMetric(Base):
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
     metric_type = Column(String, nullable=False)
     payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+
+class StripeWebhookEvent(Base):
+    __tablename__ = "stripe_webhook_events"
+
+    id = Column(Integer, primary_key=True)
+    stripe_event_id = Column(String, nullable=False, unique=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    event_type = Column(String, nullable=False, index=True)
+    account_id = Column(String, nullable=True)
+    livemode = Column(Boolean, default=True, nullable=False)
+    payload = Column(JSON, nullable=False)
+    processed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow, nullable=False)
 
 

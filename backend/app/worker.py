@@ -1,4 +1,4 @@
-﻿from celery import Celery
+from celery import Celery
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
@@ -339,5 +339,16 @@ def wise_refresh_transfers(company_id: int, subscription_id: str | None = None):
     try:
         log_event(db, company_id, "wise.transfers.refresh", "webhook", subscription_id or "unknown", None, {})
         return "ok"
+    finally:
+        db.close()
+
+
+@celery.task
+def stripe_webhook_incremental_sync(stripe_webhook_event_pk: int):
+    from app.services.stripe_webhook_incremental import process_stripe_webhook_row
+
+    db: Session = SessionLocal()
+    try:
+        return process_stripe_webhook_row(db, stripe_webhook_event_pk)
     finally:
         db.close()

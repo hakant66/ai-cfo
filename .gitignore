@@ -43,3 +43,4 @@ docs/id_rsa.pub
 # Runtime data
 backend/storage/
 !backend/storage/**/.gitkeep
+backend_storage.tar.gz

@@ -1,4 +1,4 @@
-﻿services:
+services:
   db:
     image: pgvector/pgvector:pg15
     environment:
@@ -27,6 +27,8 @@
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/ai_cfo
       - REDIS_URL=redis://redis:6379/0
+      # Local dev only: must match X-Mock-Stripe-Secret on POST /webhooks/stripe/mock
+      - MOCK_STRIPE_WEBHOOK_SECRET=dev-secret
     depends_on:
       - db
       - redis
