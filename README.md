@@ -1,60 +1,113 @@
-# AI Assistant (AI CFO) - Current Status
-Last updated: 2026-02-05
+# AI CFO - Financial Intelligence & Payment Orchestration Platform
+Last updated: June 2026
 
-## Screenshots
-- Dashboard (Morning Brief)
-- Sales Quality
-- Sales Quality (True Net Margin)
-- Inventory
-- Payables
-- Wise Admin (Status + Settings)
-- Exchange Rates
-- Companies Admin
-- Stripe Admin (Settings + Sync)
+AI CFO is a **CFO-grade financial intelligence system** designed for retail sellers with multi-channel commerce. It provides daily cash visibility, payment reconciliation, sales quality analytics, and intelligent financial decision-making through an AI-powered assistant.
 
-## Business requirements
-- CFO-grade decision system with trusted metrics and provenance.
-- Multi-tenant safe from day one (company_id scoped everywhere).
-- Role-based access (Founder/Finance/Ops/Marketing/ReadOnly).
-- Daily CFO workflows (Morning Brief) plus product analytics (Sales Quality).
-- Operational simplicity for a single retailer while remaining tenant-safe.
-- Secure integrations with least privilege, token encryption, and auditability.
+## Core Features
 
-## Problems solved
-- Daily cash visibility and short-term forecast.
-- Inventory risk monitoring (stockout/overstock).
-- Sales quality insights by channel, customer mix, SKU/category concentration.
-- Payables timing for cash planning.
-- Exchange rate snapshots with manual overrides (Founder/Finance only).
-- Wise connector for bank balances/transactions with OAuth and webhooks.
+### 📊 Morning Brief Dashboard
+Unified daily cash position and financial snapshot:
+- **Real-time cash position** (aggregated from all bank accounts and Wise profiles)
+- **Yesterday's performance**: Net sales, COGS, refunds, discounts, ad spend
+- **Margin metrics**: Gross margin, contribution margin
+- **7/14/30-day cash forecasts** based on payables and revenue trends
+- **Confidence scoring** based on data completeness
+- **Integrated chatbot** (Ask CFO) for natural language financial queries
 
-## Features
-- Morning Brief dashboard with cash, sales, payables, alerts.
-- Sales Quality page with KPIs, mix, concentration, geography, currency, True Net Margin (Stripe).
-- Inventory health monitoring with risk flags.
-- Payables table with due date and criticality.
-- Ask CFO chat with tool-calling and document search.
-- Exchange rates page with live refresh and manual override.
-- Wise connector (OAuth, sync, webhook ingestion).
-- Stripe connector for revenue sync, balance/payout history, and True Net Margin metrics.
-- Admin pages for companies, users, demo data, Wise settings, and Stripe settings.
+### 💳 Payment & Revenue Intelligence
+- **Stripe integration** with True Net Margin metrics (gross → fees → net)
+- **Revenue sync** (30-day default): aggregates balance transactions, charges, and refunds
+- **Balance history & payouts**: Track cash flow patterns and payment timelines
+- **Webhook-driven updates**: Real-time sync on new charges, refunds, and payouts
 
-## Solution architecture
-- Frontend (Next.js) renders CFO workflows and admin tools.
-- Backend (FastAPI) provides REST APIs, auth, and metrics.
-- Stripe API service (FastAPI) pulls Stripe revenue, balance/payouts, and True Net Margin.
-- Postgres stores truth data, metrics, and connectors.
-- Celery + Redis run background jobs (Shopify sync, Wise sync, doc indexing).
-- Mock Shopify service for local demo data.
+### 🏦 Multi-Currency Bank Account Management (Wise)
+- **OAuth-secured connections** to Wise (TransferWise) business accounts
+- **Multi-profile support**: Manage multiple profiles per environment (sandbox/production)
+- **Real-time balances** across multiple currencies
+- **Transaction history** with automatic categorization
+- **Exchange rate snapshots** with manual override capability (Finance/Founder)
+- **Webhook-driven incremental updates**: Keep balances fresh without full syncs
 
-## Technical stack
+### 📈 Sales Quality Analytics
+- **Channel mix & concentration**: Track sales by source and customer concentration
+- **Order metrics**: Average order value (AOV), units per order (UPO), customer segmentation
+- **SKU & category analysis**: Identify top-performing products and concentration risk
+- **Geographic distribution**: Understand sales by region/country
+- **Currency impact**: Track multi-currency sales with FX notes
+- **True Net Margin** (Stripe): See actual profitability after all fees
+
+### 📋 Operational Finance
+- **Payables tracking**: Due dates, criticality levels, cash planning
+- **Inventory health**: Monitor stock levels, risk flags for overstock/stockout
+- **Exchange rates**: Live FX tracking with manual overrides
+- **Document management**: Upload invoices, P&Ls, reports; searchable with AI embeddings
+
+### 🤖 Ask CFO - AI Financial Assistant
+Natural language financial queries with tool-calling:
+- Morning brief snapshots
+- Cash flow forecasts
+- Inventory health checks
+- Payables analysis
+- Document search across uploaded financial records
+- Integration with Dify for advanced LLM orchestration
+
+## Business Requirements
+- **CFO-grade decision system** with trusted metrics and audit trails
+- **Multi-tenant safe** from day one (company_id scoped everywhere)
+- **Role-based access** (Founder/Finance/Ops/Marketing/ReadOnly)
+- **Daily CFO workflows** + real-time payment reconciliation
+- **Secure integrations** with least-privilege access, encrypted tokens, and audit logs
+- **Compliance-ready**: Data encryption, webhook validation, audit trails
+
+## Problems Solved
+- **Cash visibility gap**: Real-time position across all accounts and currencies
+- **Revenue mystery**: Stripe fees and true profitability hidden in transaction details
+- **Multi-currency complexity**: Exchange rates, Wise transfers, FX impact on margins
+- **Payment timing**: When will cash actually hit the account? (Stripe payouts, transfers)
+- **Inventory risk**: Overstock ties up cash; stockouts kill revenue
+- **Payables planning**: When are bills due? Which ones impact cash flow most?
+- **Sales quality drift**: Are we selling to the right customers? Channel concentration risk?
+- **Financial knowledge silos**: CFO can't easily ask questions across data sources
+
+## Technical Architecture Overview
+
+AI CFO is a **multi-service application** designed for reliability and scalability:
+
+### Services
+- **Frontend (Next.js 14)**: React-based UI with real-time data fetching
+- **Main Backend (FastAPI)**: REST APIs, auth, metrics, Dify integration
+- **Stripe API Service (FastAPI)**: Dedicated microservice for Stripe SDK calls
+- **Wise API Service (FastAPI)**: OAuth, webhooks, account management
+- **Job Queue (Celery + Redis)**: Background sync jobs
+- **Database (Postgres + pgvector)**: Relational data + document embeddings
+
+### Data Flow
+1. **User login** → JWT auth → company-scoped data access
+2. **Dashboard load** → fetch Morning Brief metrics (cash, sales, payables)
+3. **Stripe sync** → revenue, balance, payouts → True Net Margin metrics
+4. **Wise sync** → OAuth → balance accounts → transactions & balances
+5. **Webhooks** → Stripe/Wise events → incremental metric updates
+6. **Ask CFO** → Dify chatflow → tool calls → metric/document responses
+
+### Key Design Principles
+- **Company isolation**: All queries filtered by `company_id`
+- **Least privilege**: Integrations use restricted API keys and OAuth scopes
+- **Audit trail**: All changes logged with user, timestamp, and action
+- **Metric provenance**: Every number tracks its source and refresh time
+- **Idempotent webhooks**: Stripe/Wise events de-duped by event ID
+- **Encryption at rest**: Wise OAuth tokens encrypted with RSA keys
+
+## Technical Stack
 - Frontend: Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, SWR, Zod
 - Backend: FastAPI, SQLAlchemy, Alembic, Pydantic
-- Stripe API: FastAPI (separate service)
-- Database: Postgres + pgvector
-- Jobs: Celery + Redis
-- Auth: JWT + RBAC
-- LLM Orchestration: OpenAI (fallback) + Dify Chatflow (primary)
+- Stripe API: FastAPI (separate service, dedicated microservice for Stripe SDK)
+- Wise API: FastAPI (separate service, OAuth + webhook management)
+- Database: Postgres + pgvector (relational + AI embeddings for documents)
+- Jobs: Celery + Redis (background sync jobs, webhook processing)
+- Auth: JWT + RBAC (role-based access control)
+- LLM Orchestration: Dify Chatflow (primary) + OpenAI (fallback)
+
+**For detailed business context and use cases**, see [BUSINESS.md](BUSINESS.md)
 
 ## Ask CFO via Dify (short guide)
 Dify is the primary LLM orchestration layer for Ask CFO in this repo: the backend exposes Dify tool endpoints (morning brief, cash forecast, inventory health, payables, doc search) that you import into a Dify Chatflow, and the frontend embeds the Dify chatbot via an iframe using `NEXT_PUBLIC_DIFY_BASE`. There is also a Dify-compatible external knowledge-base retrieval endpoint gated by `dify_external_kb_api_key`. If Dify is not configured, Ask CFO falls back to the local `/chat/ask` path.
@@ -138,6 +191,7 @@ docker compose down
 - Backend uses `STRIPE_API_BASE` to call the Stripe API service.
 - Configure `stripe-api/.env` with `STRIPE_SECRET_KEY` (required) and `STRIPE_PUBLISHABLE_KEY` (optional).
 - Webhooks on the main API: set `STRIPE_WEBHOOK_SECRET` and point Stripe Dashboard to `https://<host>/webhooks/stripe`. Optional `MOCK_STRIPE_WEBHOOK_SECRET` enables `POST /webhooks/stripe/mock` for synthetic payout/refund/failed-charge events (see [docs/stripe-integration.md](docs/stripe-integration.md)).
+- **Deploy / Docker:** rebuild `backend` and `worker` after changing webhook or echo env vars (`docker compose build backend worker && docker compose up -d backend worker`). For synthetic merges, optional `STRIPE_API_ECHO_AFTER_SYNTHETIC=true` makes the worker call `GET {STRIPE_API_BASE}/health` (see docs). Ensure `stripe-api` is reachable from those containers (`STRIPE_API_BASE` defaults to `http://stripe-api:8002` in Docker).
 
 ### Wise environment variables
 Note: Wise credentials are encrypted with RSA using `WISE_PUBLIC_KEY`. The private key `WISE_PRIVATE_KEY` must be stored securely in env.
