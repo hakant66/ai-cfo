@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MetricCard } from "@/components/metric-card";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAuthedSWR } from "@/hooks/useApi";
+import { useMorningBrief } from "@/hooks/useMorningBrief";
 import { useCompanyName } from "@/hooks/useCompany";
 
 function formatCurrency(value: number | null, currency: string | null) {
@@ -21,7 +21,7 @@ function formatLastRefresh(value: string | null | undefined) {
 
 export default function DashboardPage() {
   const date = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const { data, error } = useAuthedSWR<any>(`/metrics/morning_brief?date=${date}`);
+  const { data, error } = useMorningBrief(date);
   const companyName = useCompanyName();
   const [showChatbot, setShowChatbot] = useState(true);
   const [chatbotMinimized, setChatbotMinimized] = useState(false);
@@ -119,72 +119,72 @@ export default function DashboardPage() {
   const payables7d = data.payables["7d"];
 
   return (
-    <>
+    <div>
       <div className="grid gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-ink/60">
-            {companyName ? `Morning CFO brief - ${companyName}` : "Morning CFO brief"}
-          </p>
-          <h1 className="text-3xl font-semibold">Daily financial position</h1>
-          <p className="text-sm text-ink/60">Last refreshed: {formatLastRefresh(cash.last_refresh)}</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-ink/60">
+              {companyName ? `Morning CFO brief - ${companyName}` : "Morning CFO brief"}
+            </p>
+            <h1 className="text-3xl font-semibold">Daily financial position</h1>
+            <p className="text-sm text-ink/60">Last refreshed: {formatLastRefresh(cash.last_refresh)}</p>
+          </div>
+          <Badge>{data.confidence} confidence</Badge>
         </div>
-        <Badge>{data.confidence} confidence</Badge>
-      </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard title="Total cash position" value={formatCurrency(cash.value, cash.currency)} subtitle={`Sources: ${cash.sources.join(", ")}`} />
-        {cashBreakdown && (
-          <>
-            <MetricCard
-              title="Cash position Bank"
-              value={formatCurrency(cashBreakdown.bank.value, cashBreakdown.bank.currency)}
-              subtitle={`Sources: ${cashBreakdown.bank.sources.join(", ")}`}
-            />
-            <MetricCard
-              title="Cash position Wise"
-              value={formatCurrency(cashBreakdown.wise.value, cashBreakdown.wise.currency)}
-              subtitle={`Sources: ${cashBreakdown.wise.sources.join(", ")}`}
-            />
-          </>
-        )}
-        <MetricCard title="Expected cash (7d)" value={formatCurrency(expected7d.value, expected7d.currency)} subtitle="Forecast expected" />
-        <MetricCard title="Expected cash (14d)" value={formatCurrency(expected14d.value, expected14d.currency)} subtitle="Forecast expected" />
-        <MetricCard title="Expected cash (30d)" value={formatCurrency(expected30d.value, expected30d.currency)} subtitle="Forecast expected" />
-        <MetricCard title="Payables due (7d)" value={formatCurrency(payables7d.value, payables7d.currency)} subtitle="Open bills" />
-        <MetricCard title="Net sales (yesterday)" value={formatCurrency(netSales.value, netSales.currency)} subtitle={`Window: ${netSales.time_window}`} />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard title="COGS (mock)" value={formatCurrency(cogs.value, cogs.currency)} subtitle={`Window: ${cogs.time_window}`} />
-        <MetricCard title="Refunds" value={formatCurrency(refunds.value, refunds.currency)} subtitle={`Window: ${refunds.time_window}`} />
-        <MetricCard title="Discounts" value={formatCurrency(discounts.value, discounts.currency)} subtitle={`Window: ${discounts.time_window}`} />
-        <MetricCard title="Ad spend (mock)" value={formatCurrency(adSpend.value, adSpend.currency)} subtitle={`Window: ${adSpend.time_window}`} />
-        <MetricCard title="Other expenses (mock)" value={formatCurrency(otherExpenses.value, otherExpenses.currency)} subtitle={`Window: ${otherExpenses.time_window}`} />
-        <MetricCard title="Gross margin" value={formatCurrency(grossMargin.value, grossMargin.currency)} subtitle={`Window: ${grossMargin.time_window}`} />
-        <MetricCard title="Contribution margin" value={formatCurrency(contribution.value, contribution.currency)} subtitle={`Window: ${contribution.time_window}`} />
-      </div>
-
-      <Card className="grid gap-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Alerts</h2>
-          <span className="text-xs text-ink/60">{data.alerts.length} active</span>
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard title="Total cash position" value={formatCurrency(cash.value, cash.currency)} subtitle={`Sources: ${cash.sources.join(", ")}`} />
+          {cashBreakdown && (
+            <>
+              <MetricCard
+                title="Cash position Bank"
+                value={formatCurrency(cashBreakdown.bank.value, cashBreakdown.bank.currency)}
+                subtitle={`Sources: ${cashBreakdown.bank.sources.join(", ")}`}
+              />
+              <MetricCard
+                title="Cash position Wise"
+                value={formatCurrency(cashBreakdown.wise.value, cashBreakdown.wise.currency)}
+                subtitle={`Sources: ${cashBreakdown.wise.sources.join(", ")}`}
+              />
+            </>
+          )}
+          <MetricCard title="Expected cash (7d)" value={formatCurrency(expected7d.value, expected7d.currency)} subtitle="Forecast expected" />
+          <MetricCard title="Expected cash (14d)" value={formatCurrency(expected14d.value, expected14d.currency)} subtitle="Forecast expected" />
+          <MetricCard title="Expected cash (30d)" value={formatCurrency(expected30d.value, expected30d.currency)} subtitle="Forecast expected" />
+          <MetricCard title="Payables due (7d)" value={formatCurrency(payables7d.value, payables7d.currency)} subtitle="Open bills" />
+          <MetricCard title="Net sales (yesterday)" value={formatCurrency(netSales.value, netSales.currency)} subtitle={`Window: ${netSales.time_window}`} />
         </div>
-        <div className="grid gap-3">
-          {data.alerts.length === 0 && <p className="text-sm text-ink/70">No alerts today.</p>}
-          {data.alerts.map((alert: any) => (
-            <div key={alert.id} className="flex items-center justify-between rounded-lg border border-fog bg-white px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold">{alert.type}</p>
-                <p className="text-xs text-ink/60">{alert.message}</p>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard title="COGS (mock)" value={formatCurrency(cogs.value, cogs.currency)} subtitle={`Window: ${cogs.time_window}`} />
+          <MetricCard title="Refunds" value={formatCurrency(refunds.value, refunds.currency)} subtitle={`Window: ${refunds.time_window}`} />
+          <MetricCard title="Discounts" value={formatCurrency(discounts.value, discounts.currency)} subtitle={`Window: ${discounts.time_window}`} />
+          <MetricCard title="Ad spend (mock)" value={formatCurrency(adSpend.value, adSpend.currency)} subtitle={`Window: ${adSpend.time_window}`} />
+          <MetricCard title="Other expenses (mock)" value={formatCurrency(otherExpenses.value, otherExpenses.currency)} subtitle={`Window: ${otherExpenses.time_window}`} />
+          <MetricCard title="Gross margin" value={formatCurrency(grossMargin.value, grossMargin.currency)} subtitle={`Window: ${grossMargin.time_window}`} />
+          <MetricCard title="Contribution margin" value={formatCurrency(contribution.value, contribution.currency)} subtitle={`Window: ${contribution.time_window}`} />
+        </div>
+
+        <Card className="grid gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Alerts</h2>
+            <span className="text-xs text-ink/60">{data.alerts.length} active</span>
+          </div>
+          <div className="grid gap-3">
+            {data.alerts.length === 0 && <p className="text-sm text-ink/70">No alerts today.</p>}
+            {data.alerts.map((alert) => (
+              <div key={alert.id} className="flex items-center justify-between rounded-lg border border-fog bg-white px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">{alert.type}</p>
+                  <p className="text-xs text-ink/60">{alert.message}</p>
+                </div>
+                <Badge tone={alert.severity === "High" ? "danger" : alert.severity === "Medium" ? "warn" : "neutral"}>
+                  {alert.severity}
+                </Badge>
               </div>
-              <Badge tone={alert.severity === "High" ? "danger" : alert.severity === "Medium" ? "warn" : "neutral"}>
-                {alert.severity}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </Card>
+            ))}
+          </div>
+        </Card>
       </div>
       {showChatbot ? (
         <>
@@ -228,7 +228,7 @@ export default function DashboardPage() {
               </button>
               <iframe
                 title="Dify Chatbot"
-                src={`${(process.env.NEXT_PUBLIC_DIFY_BASE || "http://localhost").replace(/\\/+$/, "")}/chatbot/OFVzpQeBmvdFUA7E`}
+                src={`${(process.env.NEXT_PUBLIC_DIFY_BASE || "http://localhost").replace(/\/+$/, "")}/chatbot/OFVzpQeBmvdFUA7E`}
                 className="h-[520px] w-[360px]"
               />
             </div>
@@ -246,6 +246,6 @@ export default function DashboardPage() {
           Open Chatbot
         </button>
       )}
-    </>
+    </div>
   );
 }

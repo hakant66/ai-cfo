@@ -18,6 +18,12 @@ type StripeSettings = {
   stripe_account: string | null;
   has_publishable_key: boolean;
   has_secret_key: boolean;
+  dev_mock_webhook_ui?: boolean;
+};
+
+type CompanyMe = {
+  id: number;
+  name: string;
 };
 
 type BalancePayoutsResponse = {
@@ -65,6 +71,9 @@ export default function StripeAdminPage() {
   const [fetchingBalance, setFetchingBalance] = useState(false);
   const [balanceHistory, setBalanceHistory] = useState<BalanceHistoryItem[]>([]);
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
+  const [mockScenario, setMockScenario] = useState<"payout.paid" | "refund.created" | "charge.failed">("refund.created");
+  const [mockStatus, setMockStatus] = useState<string | null>(null);
+  const [mockLoading, setMockLoading] = useState(false);
 
   const downloadCsv = (filename: string, rows: Record<string, string | number | null | undefined>[]) => {
     const header = rows.length ? Object.keys(rows[0]) : [];
@@ -124,6 +133,8 @@ export default function StripeAdminPage() {
   };
 
   const { data: settings, mutate: mutateSettings } = useAuthedSWR<StripeSettings>("/connectors/stripe/settings");
+  const companiesMePath = settings?.dev_mock_webhook_ui ? "/companies/me" : "";
+  const { data: meCompany } = useAuthedSWR<CompanyMe>(companiesMePath);
 
   const syncRevenue = async () => {
     setStatus(null);
@@ -200,7 +211,18 @@ export default function StripeAdminPage() {
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || "Failed to fetch Stripe balance history.");
+        let message = text || res.statusText || "Failed to fetch Stripe balance history.";
+        try {
+          const parsed = JSON.parse(text) as { detail?: unknown };
+          if (typeof parsed.detail === "string") {
+            message = parsed.detail;
+          } else if (parsed.detail != null) {
+            message = JSON.stringify(parsed.detail);
+          }
+        } catch {
+          // keep message as raw text
+        }
+        throw new Error(message);
       }
       const payload = await res.json() as BalancePayoutsResponse;
       setBalanceStatus(`Balance history: ${payload.balance_count} items. Payouts: ${payload.payout_count} items.`);
@@ -214,6 +236,46 @@ export default function StripeAdminPage() {
     }
   };
 
+  const sendDevMockWebhook = async () => {
+    setMockStatus(null);
+    setMockLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/connectors/stripe/dev/mock-webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ scenario: mockScenario })
+      });
+      const text = await res.text();
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      } catch {
+        payload = { raw: text };
+      }
+      if (!res.ok) {
+        const detail = typeof payload.detail === "string" ? payload.detail : text || res.statusText;
+        throw new Error(detail || "Mock webhook request failed.");
+      }
+      const parts: string[] = [];
+      if (payload.duplicate) parts.push("duplicate event (already stored)");
+      else if (payload.received) parts.push("event accepted");
+      if (payload.event_id) parts.push(`id: ${String(payload.event_id)}`);
+      if (payload.queued === false && payload.enqueue_error)
+        parts.push(`queue: ${String(payload.enqueue_error)}`);
+      else if (payload.queued) parts.push("Celery task queued");
+      setMockStatus(parts.length ? parts.join(" · ") : JSON.stringify(payload));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Mock webhook failed.";
+      setMockStatus(message);
+    } finally {
+      setMockLoading(false);
+    }
+  };
+
   return (
     <div className="grid gap-6">
       <div>
@@ -222,6 +284,37 @@ export default function StripeAdminPage() {
       </div>
 
       <SetupTabs />
+
+      {settings?.dev_mock_webhook_ui ? (
+        <Card className="grid gap-4 border-amber-200 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <div>
+            <h2 className="text-lg font-semibold">Send mock webhook (dev)</h2>
+            <p className="text-sm text-ink/70">
+              Injects a synthetic Stripe event for{" "}
+              <span className="font-medium">{meCompany ? `${meCompany.name} (id ${meCompany.id})` : "your company"}</span>
+              — same pipeline as <code className="rounded bg-fog px-1 py-0.5 text-xs">POST /webhooks/stripe/mock</code>, without a shared
+              secret in the browser. Requires Celery worker for metrics. Disable in production via{" "}
+              <code className="rounded bg-fog px-1 py-0.5 text-xs">STRIPE_DEV_MOCK_UI_ENABLED=false</code>.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:max-w-md">
+            <label className="text-sm font-semibold text-ink/70">Scenario</label>
+            <select
+              className="w-full rounded-md border border-fog px-3 py-2 text-sm"
+              value={mockScenario}
+              onChange={(e) => setMockScenario(e.target.value as typeof mockScenario)}
+            >
+              <option value="payout.paid">payout.paid</option>
+              <option value="refund.created">refund.created</option>
+              <option value="charge.failed">charge.failed</option>
+            </select>
+          </div>
+          {mockStatus && <p className="text-sm text-ink/80">{mockStatus}</p>}
+          <Button type="button" onClick={sendDevMockWebhook} disabled={mockLoading}>
+            {mockLoading ? "Sending…" : "Send mock webhook"}
+          </Button>
+        </Card>
+      ) : null}
 
       <Card className="grid gap-4">
         <div>

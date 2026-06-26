@@ -14,8 +14,9 @@ from app.models.models import Company, WiseWebhookReceipt, WiseWebhookSubscripti
 from app.core.wise_encryption import wise_decrypt
 from app.services.audit_log import log_event
 from app.services.stripe_webhook_incremental import (
-    build_synthetic_stripe_event,
+    enqueue_stripe_webhook_incremental_task,
     persist_stripe_webhook_event,
+    run_synthetic_stripe_mock,
     should_run_incremental,
     stripe_event_to_dict,
     resolve_company_id,
@@ -33,15 +34,7 @@ def _require_company(db: Session, company_id: int) -> None:
 
 
 def _enqueue_stripe_webhook_incremental(webhook_row_pk: int) -> tuple[bool, str | None]:
-    """Queue Celery task; return (queued, error_message). Never raises — broker outages must not break HTTP."""
-    try:
-        from app.worker import stripe_webhook_incremental_sync as stripe_wh_task
-
-        stripe_wh_task.delay(webhook_row_pk)
-        return True, None
-    except Exception as exc:
-        _logger.warning("stripe_webhook_incremental_sync.delay failed: %s", exc, exc_info=True)
-        return False, str(exc)
+    return enqueue_stripe_webhook_incremental_task(webhook_row_pk)
 
 
 def verify_signature(raw_body: bytes, signature: str | None, secret: str) -> bool:
@@ -180,27 +173,7 @@ async def stripe_webhook_mock(
         expected = (settings.mock_stripe_webhook_secret or "").strip()
         if not expected or x_mock_stripe_secret != expected:
             raise HTTPException(status_code=404, detail="Not found")
-        _require_company(db, body.company_id)
-        event_dict = build_synthetic_stripe_event(body.scenario, body.company_id)
-        row, duplicate = persist_stripe_webhook_event(db, company_id=body.company_id, event_dict=event_dict)
-        if duplicate:
-            return {"received": True, "duplicate": True}
-        webhook_pk = row.id
-        log_event(db, body.company_id, "stripe.webhook.mock", "webhook", str(event_dict.get("id")), None, {"scenario": body.scenario})
-        evt_type = event_dict.get("type") or ""
-        queued = False
-        enqueue_error: str | None = None
-        if should_run_incremental(evt_type):
-            queued, enqueue_error = _enqueue_stripe_webhook_incremental(webhook_pk)
-        out: dict = {
-            "received": True,
-            "scenario": body.scenario,
-            "event_id": event_dict.get("id"),
-            "queued": queued,
-        }
-        if enqueue_error:
-            out["enqueue_error"] = enqueue_error
-        return out
+        return run_synthetic_stripe_mock(db, company_id=body.company_id, scenario=body.scenario)
     except HTTPException:
         raise
     except Exception as exc:

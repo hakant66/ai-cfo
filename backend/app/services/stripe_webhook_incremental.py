@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import requests
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.models import Integration, IntegrationType, StripeMetric, StripeWebhookEvent, utcnow
+from app.models.models import Company, Integration, IntegrationType, StripeMetric, StripeWebhookEvent, utcnow
 
+_logger = logging.getLogger(__name__)
 
 INCREMENTAL_DAYS = 3
 
@@ -23,6 +26,70 @@ INCREMENTAL_PREFIXES = (
     "charge.",
     "refund.",
 )
+
+
+def _stripe_api_health_echo() -> dict[str, Any]:
+    """Optional GET stripe-api /health after synthetic merge to verify connectivity (same base URL as incremental pulls)."""
+    if not settings.stripe_api_echo_after_synthetic:
+        return {"skipped": True}
+    url = f"{settings.stripe_api_base.rstrip('/')}/health"
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        try:
+            body = response.json()
+        except Exception:
+            body = {"raw": (response.text or "")[:200]}
+        return {"ok": True, "status_code": response.status_code, "url": url, "body": body}
+    except Exception as exc:
+        _logger.warning("stripe-api health echo failed: %s", exc)
+        return {"ok": False, "url": url, "error": str(exc)}
+
+
+def enqueue_stripe_webhook_incremental_task(webhook_row_pk: int) -> tuple[bool, str | None]:
+    """Queue Celery incremental task; return (queued, error). Does not raise."""
+    try:
+        from app.worker import stripe_webhook_incremental_sync as task
+
+        task.delay(webhook_row_pk)
+        return True, None
+    except Exception as exc:
+        _logger.warning("stripe_webhook_incremental_sync.delay failed: %s", exc, exc_info=True)
+        return False, str(exc)
+
+
+def run_synthetic_stripe_mock(
+    db: Session,
+    *,
+    company_id: int,
+    scenario: str,
+) -> dict:
+    """Persist a synthetic Stripe-shaped event and optionally queue incremental processing (same as /webhooks/stripe/mock)."""
+    from app.services.audit_log import log_event
+
+    if db.query(Company).filter(Company.id == company_id).first() is None:
+        raise HTTPException(status_code=404, detail=f"Company id {company_id} not found")
+
+    event_dict = build_synthetic_stripe_event(scenario, company_id)
+    row, duplicate = persist_stripe_webhook_event(db, company_id=company_id, event_dict=event_dict)
+    if duplicate:
+        return {"received": True, "duplicate": True}
+    webhook_pk = row.id
+    log_event(db, company_id, "stripe.webhook.mock", "webhook", str(event_dict.get("id")), None, {"scenario": scenario})
+    evt_type = event_dict.get("type") or ""
+    queued = False
+    enqueue_error: str | None = None
+    if should_run_incremental(evt_type):
+        queued, enqueue_error = enqueue_stripe_webhook_incremental_task(webhook_pk)
+    out: dict = {
+        "received": True,
+        "scenario": scenario,
+        "event_id": event_dict.get("id"),
+        "queued": queued,
+    }
+    if enqueue_error:
+        out["enqueue_error"] = enqueue_error
+    return out
 
 
 def should_run_incremental(event_type: str) -> bool:
@@ -248,6 +315,9 @@ def process_stripe_webhook_row(db: Session, stripe_webhook_event_pk: int) -> dic
             line = synthetic_true_net_margin_line(event)
             inserted = merge_true_net_margin_dedupe(db, row.company_id, [line])
             out: dict = {"mode": "synthetic", "inserted": inserted}
+            echo = _stripe_api_health_echo()
+            if not echo.get("skipped"):
+                out["stripe_api_echo"] = echo
         else:
             out = pull_incremental_from_stripe_api(db, row.company_id)
             out["mode"] = "api"

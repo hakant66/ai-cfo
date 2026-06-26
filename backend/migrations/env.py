@@ -1,5 +1,5 @@
-﻿from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+from logging.config import fileConfig
+from sqlalchemy import event, engine_from_config, pool
 from alembic import context
 import os
 import sys
@@ -20,6 +20,14 @@ target_metadata = Base.metadata
 
 def get_url():
     return os.getenv("DATABASE_URL")
+
+
+def setup_version_table(conn, *multiparams, **params):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alembic_version (
+            version_num VARCHAR(255) NOT NULL PRIMARY KEY
+        )
+    """)
 
 
 def run_migrations_offline():
@@ -43,6 +51,17 @@ def run_migrations_online():
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+
+    @event.listens_for(connectable, "connect")
+    def receive_connect(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alembic_version (
+                version_num VARCHAR(255) NOT NULL PRIMARY KEY
+            )
+        """)
+        dbapi_conn.commit()
+        cursor.close()
 
     with connectable.connect() as connection:
         context.configure(

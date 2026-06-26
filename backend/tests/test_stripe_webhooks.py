@@ -7,15 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.security import create_access_token
 from app.main import app
-from app.models.models import Company, Integration, IntegrationType, StripeMetric, StripeWebhookEvent
+from app.models.models import Company, Integration, IntegrationType, Role, StripeMetric, StripeWebhookEvent, User
+from app.services import stripe_webhook_incremental as stripe_wh_inc
 from app.services.stripe_webhook_incremental import (
     build_synthetic_stripe_event,
     persist_stripe_webhook_event,
     process_stripe_webhook_row,
     resolve_company_id,
 )
-from app.api import webhooks as webhooks_module
 
 
 @pytest.fixture()
@@ -25,6 +26,13 @@ def stripe_company(db_session: Session) -> Company:
     db_session.commit()
     db_session.refresh(company)
     return company
+
+
+def test_stripe_api_echo_skipped_when_disabled(monkeypatch):
+    monkeypatch.setattr(settings, "stripe_api_echo_after_synthetic", False)
+    from app.services.stripe_webhook_incremental import _stripe_api_health_echo
+
+    assert _stripe_api_health_echo() == {"skipped": True}
 
 
 def test_resolve_company_from_connect_account(db_session: Session, stripe_company: Company):
@@ -165,7 +173,7 @@ def test_mock_endpoint_inserts_metric(db_session: Session, stripe_company: Compa
         process_stripe_webhook_row(db_session, webhook_pk)
         return True, None
 
-    monkeypatch.setattr(webhooks_module, "_enqueue_stripe_webhook_incremental", fake_enqueue)
+    monkeypatch.setattr(stripe_wh_inc, "enqueue_stripe_webhook_incremental_task", fake_enqueue)
 
     app.dependency_overrides[get_db] = override_db
     client = TestClient(app)
@@ -174,6 +182,142 @@ def test_mock_endpoint_inserts_metric(db_session: Session, stripe_company: Compa
             "/webhooks/stripe/mock",
             json={"company_id": stripe_company.id, "scenario": "charge.failed"},
             headers={"X-Mock-Stripe-Secret": "mock-secret-xyz"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["received"] is True
+        assert data["queued"] is True
+        assert db_session.query(StripeMetric).filter(StripeMetric.company_id == stripe_company.id).count() == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_connectors_dev_mock_returns_404_when_disabled(db_session: Session, stripe_company: Company, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_dev_mock_ui_enabled", False)
+    user = User(
+        email="devmock@test.dev",
+        password_hash="x",
+        role=Role.founder,
+        company_id=stripe_company.id,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(str(user.id))
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        res = client.post(
+            "/connectors/stripe/dev/mock-webhook",
+            json={"scenario": "payout.paid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_connectors_dev_mock_accepts_when_enabled(db_session: Session, stripe_company: Company, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_dev_mock_ui_enabled", True)
+    user = User(
+        email="devmock2@test.dev",
+        password_hash="x",
+        role=Role.founder,
+        company_id=stripe_company.id,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(str(user.id))
+
+    def override_db():
+        yield db_session
+
+    def fake_enqueue(webhook_pk: int):
+        process_stripe_webhook_row(db_session, webhook_pk)
+        return True, None
+
+    monkeypatch.setattr(stripe_wh_inc, "enqueue_stripe_webhook_incremental_task", fake_enqueue)
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        res = client.post(
+            "/connectors/stripe/dev/mock-webhook",
+            json={"scenario": "refund.created"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["received"] is True
+        assert data["queued"] is True
+        assert db_session.query(StripeMetric).filter(StripeMetric.company_id == stripe_company.id).count() == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_connectors_dev_mock_returns_404_when_disabled(db_session: Session, stripe_company: Company, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_dev_mock_ui_enabled", False)
+    user = User(
+        email="devmock@test.dev",
+        password_hash="x",
+        role=Role.founder,
+        company_id=stripe_company.id,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(str(user.id))
+
+    def override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        res = client.post(
+            "/connectors/stripe/dev/mock-webhook",
+            json={"scenario": "payout.paid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_connectors_dev_mock_accepts_when_enabled(db_session: Session, stripe_company: Company, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_dev_mock_ui_enabled", True)
+    user = User(
+        email="devmock2@test.dev",
+        password_hash="x",
+        role=Role.founder,
+        company_id=stripe_company.id,
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    token = create_access_token(str(user.id))
+
+    def override_db():
+        yield db_session
+
+    def fake_enqueue(webhook_pk: int):
+        process_stripe_webhook_row(db_session, webhook_pk)
+        return True, None
+
+    monkeypatch.setattr(stripe_wh_inc, "enqueue_stripe_webhook_incremental_task", fake_enqueue)
+
+    app.dependency_overrides[get_db] = override_db
+    client = TestClient(app)
+    try:
+        res = client.post(
+            "/connectors/stripe/dev/mock-webhook",
+            json={"scenario": "refund.created"},
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert res.status_code == 200
         data = res.json()

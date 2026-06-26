@@ -27,12 +27,19 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/ai_cfo
       - REDIS_URL=redis://redis:6379/0
+      # Inside Docker, 127.0.0.1 is this container — use the compose service name (overrides .env.example).
+      - STRIPE_API_BASE=http://stripe-api:8002
       # Local dev only: must match X-Mock-Stripe-Secret on POST /webhooks/stripe/mock
       - MOCK_STRIPE_WEBHOOK_SECRET=dev-secret
+      # Enables Administrator → Stripe “Send mock webhook” panel (JWT; no browser secret)
+      - STRIPE_DEV_MOCK_UI_ENABLED=true
+      # After synthetic webhook merge, GET stripe-api /health (see STRIPE_API_ECHO_AFTER_SYNTHETIC in .env.example)
+      - STRIPE_API_ECHO_AFTER_SYNTHETIC=true
     depends_on:
       - db
       - redis
       - mock-shopify
+      - stripe-api
     volumes:
       - ./backend/storage:/app/storage
     ports:
@@ -70,10 +77,13 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:password@db:5432/ai_cfo
       - REDIS_URL=redis://redis:6379/0
+      - STRIPE_API_BASE=http://stripe-api:8002
+      - STRIPE_API_ECHO_AFTER_SYNTHETIC=true
     depends_on:
       - db
       - redis
       - mock-shopify
+      - stripe-api
     volumes:
       - ./backend/storage:/app/storage
 

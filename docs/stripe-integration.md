@@ -126,8 +126,9 @@ All routes require **`Founder` or `Finance`** roles unless noted otherwise.
 
 | Route | Role | Action |
 | --- | --- | --- |
-| `GET /connectors/stripe/settings` | Founder, Finance | Returns `stripe_account`, booleans `has_publishable_key`, `has_secret_key` (never returns raw keys). |
-| `POST /connectors/stripe/settings` | Founder, Finance | Merges optional `stripe_account`, `publishable_key`, `secret_key` into integration credentials; marks connected when a secret key is present. |
+| `GET /connectors/stripe/settings` | Founder, Finance | Returns `stripe_account`, booleans `has_publishable_key`, `has_secret_key`, and **`dev_mock_webhook_ui`** (true only when `STRIPE_DEV_MOCK_UI_ENABLED` is set on the server). |
+| `POST /connectors/stripe/settings` | Founder, Finance | Merges optional `stripe_account`, `publishable_key`, `secret_key` into integration credentials; marks connected when a secret key is present. Response includes `dev_mock_webhook_ui` as well. |
+| `POST /connectors/stripe/dev/mock-webhook` | Founder, Finance | **Dev only:** if `STRIPE_DEV_MOCK_UI_ENABLED` is false, returns **404**. Otherwise runs the same synthetic ingestion as `POST /webhooks/stripe/mock` for **`user.company_id`** (body: `{ "scenario": "payout.paid" \| "refund.created" \| "charge.failed" }` only). Used by the Administrator Stripe UI; no `X-Mock-Stripe-Secret` in the browser. |
 | `POST /connectors/stripe/sync-revenue` | Founder, Finance | POSTs credentials JSON to `{STRIPE_API_BASE}/sync/revenue` (no date range), updates `last_sync_at`, returns microservice JSON. |
 | `POST /connectors/stripe/balance-payouts` | Founder, Finance | Forwards `start_date`, `end_date` to `/sync/balance-payouts`. |
 | `POST /connectors/stripe/metrics/true-net-margin` | Founder, Finance | Forwards date range + `limit` to `/metrics/true-net-margin`. |
@@ -152,10 +153,14 @@ Stripe sends signed events to the **main API** (port 8000), not `stripe-api`. Co
 
 Unrouted events return **200** `{ "received": true, "ignored": "no_company" }` so Stripe does not disable the endpoint.
 
+**Synthetic processing → stripe-api connectivity (optional)**
+
+When `STRIPE_API_ECHO_AFTER_SYNTHETIC=true`, after each **synthetic** webhook merge the worker issues `GET {STRIPE_API_BASE}/health` (5s timeout), using the same base URL as real incremental pulls. The Celery task return value may include `stripe_api_echo` (`ok`, `status_code`, `body`, or `error`) for observability. Leave **false** in production unless you explicitly want this check.
+
 ## Frontend usage
 
-- **Administrator → Stripe** (`frontend/src/app/administrator/stripe/page.tsx`): load/save settings, trigger revenue sync, balance/payout fetch with CSV download.
-- **Sales Quality** (`frontend/src/app/sales-quality/page.tsx`): loads stored true net margin via `GET /connectors/stripe/metrics/true-net-margin?start_date=…&end_date=…` for charts/KPIs.
+- **Administrator → Stripe** (`frontend/src/app/administrator/stripe/page.tsx`): load/save settings, trigger revenue sync, balance/payout fetch with CSV download. When the API returns `dev_mock_webhook_ui: true`, a **Send mock webhook (dev)** panel calls `POST /connectors/stripe/dev/mock-webhook` with the signed-in user’s company (same pipeline as `/webhooks/stripe/mock` without putting `MOCK_STRIPE_WEBHOOK_SECRET` in the browser).
+- **Sales Quality** (`frontend/src/app/sales-quality/page.tsx`): **True Net Margin (Stripe)** sits directly under the shared date range (full width; loads from `GET /connectors/stripe/metrics/true-net-margin` for the same dates, independent of sales-quality fetch). **New vs returning** follows once sales-quality data has loaded, then KPI tiles, then **Channel mix** and the rest of the page.
 
 ## Environment variables
 
@@ -163,15 +168,17 @@ Unrouted events return **200** `{ "received": true, "ignored": "no_company" }` s
 | --- | --- | --- |
 | `STRIPE_SECRET_KEY` | `stripe-api/.env` | Default secret key when the request body does not include `secret_key`. |
 | `STRIPE_PUBLISHABLE_KEY` | `stripe-api/.env` (optional) | Documented in README; not required by current server logic. |
-| `STRIPE_API_BASE` | `backend` | Base URL of the stripe-api service. |
+| `STRIPE_API_BASE` | `backend` / `worker` | Base URL of the stripe-api service. **Docker:** use `http://stripe-api:8002` (compose overrides `.env.example`). **Backend on host:** `http://127.0.0.1:8102` if stripe-api maps host port 8102. **`127.0.0.1` from inside a backend container** targets that container itself → connection errors and **502** on `/connectors/stripe/*`. |
 | `STRIPE_WEBHOOK_SECRET` | `backend` | Stripe Dashboard webhook signing secret (`whsec_…`) for `POST /webhooks/stripe`. |
 | `STRIPE_WEBHOOK_DEFAULT_COMPANY_ID` | `backend` (optional) | When Connect `account` and metadata routing both miss, associate events with this company id. |
 | `MOCK_STRIPE_WEBHOOK_SECRET` | `backend` (optional) | Shared secret for `POST /webhooks/stripe/mock`; if unset, mock route returns 404. |
+| `STRIPE_DEV_MOCK_UI_ENABLED` | `backend` (optional, default false) | When true, exposes `dev_mock_webhook_ui` on Stripe settings and enables `POST /connectors/stripe/dev/mock-webhook` for Founder/Finance (JWT). Keep **false** in production unless you intentionally want this surface. |
+| `STRIPE_API_ECHO_AFTER_SYNTHETIC` | `backend` / `worker` (optional, default false) | After synthetic webhook merge, `GET` stripe-api `/health` to verify reachability; result attached to Celery return dict as `stripe_api_echo`. |
 
 ## Operational notes
 
-- **Timeouts:** Backend uses `requests` with **60s** timeout to the microservice; heavy accounts may need tuning or narrower date ranges.
-- **Errors:** Upstream Stripe or network failures surface as **502** from the main backend with the microservice error text when available.
+- **Timeouts:** Backend uses `requests` with **60s** timeout to the microservice for most Stripe proxy calls; **`POST /connectors/stripe/balance-payouts` uses 180s** because large date windows can paginate for a long time. Narrow the range if you still hit timeouts.
+- **Errors:** Upstream Stripe or network failures surface as **502** from the main backend with the microservice error text when available. If the detail mentions connection refused or `127.0.0.1`, fix **`STRIPE_API_BASE`** so the backend reaches **stripe-api** (see table above).
 - **SDK version:** `stripe==9.12.0` in `stripe-api/requirements.txt` and `backend/requirements.txt` (webhook signature verification on the main API).
 
 ## Related files

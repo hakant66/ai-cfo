@@ -1,6 +1,8 @@
-﻿import useSWR from "swr";
-import { apiGet } from "@/lib/api";
+"use client";
+
+import { useAuthedSWR } from "@/hooks/useApi";
+import type { MorningBriefData } from "@/types/morning-brief";
 
 export function useMorningBrief(date: string) {
-  return useSWR([`/metrics/morning_brief?date=${date}`], ([url]) => apiGet(url));
+  return useAuthedSWR<MorningBriefData>(`/metrics/morning_brief?date=${date}`);
 }

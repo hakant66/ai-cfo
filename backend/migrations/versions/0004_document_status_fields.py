@@ -15,14 +15,8 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column("documents", sa.Column("status", sa.String(), nullable=False, server_default="queued"))
-    op.add_column("documents", sa.Column("indexed_chunks", sa.Integer(), nullable=False, server_default="0"))
-    op.add_column("documents", sa.Column("indexed_at", sa.DateTime(), nullable=True))
-    op.add_column("documents", sa.Column("error_message", sa.String(), nullable=True))
+    pass
 
 
 def downgrade():
-    op.drop_column("documents", "error_message")
-    op.drop_column("documents", "indexed_at")
-    op.drop_column("documents", "indexed_chunks")
-    op.drop_column("documents", "status")
+    pass

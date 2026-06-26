@@ -112,9 +112,10 @@ export default function SalesQualityPage() {
       }),
       { gross: 0, net: 0, fee: 0, currency: "", marginSum: 0 }
     );
-    const marginPct = summary.gross > 0 ? (summary.net / summary.gross) * 100 : 0;
+    const absGross = Math.abs(summary.gross);
+    const blendedMarginPct = absGross > 1e-9 ? (summary.net / summary.gross) * 100 : null;
     const avgMargin = trueNetData.items.length ? summary.marginSum / trueNetData.items.length : 0;
-    return { ...summary, marginPct, avgMargin, count: trueNetData.count };
+    return { ...summary, blendedMarginPct, avgMargin, count: trueNetData.count };
   }, [trueNetData]);
 
   const loadTrueNetMargin = async () => {
@@ -254,9 +255,168 @@ export default function SalesQualityPage() {
         </div>
       </Card>
 
+      <section
+        aria-labelledby="true-net-heading"
+        className="min-w-0 overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-[0_12px_40px_-24px_rgba(15,23,42,0.35)] ring-1 ring-black/[0.04]"
+      >
+        <div className="border-b border-fog bg-gradient-to-r from-slate-50 to-violet-50/60 px-6 py-5 md:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="grid min-w-0 max-w-2xl gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-violet-200 bg-white px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-violet-800">
+                  Stripe
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink/45">True net margin</span>
+                {trueNetData != null && (
+                  <span className="text-xs text-ink/50">
+                    {trueNetData.count} stored {trueNetData.count === 1 ? "transaction" : "transactions"}
+                  </span>
+                )}
+              </div>
+              <h2 id="true-net-heading" className="text-xl font-semibold tracking-tight text-ink md:text-2xl">
+                True Net Margin (Stripe)
+              </h2>
+              <p className="text-sm leading-relaxed text-ink/65">
+                Read from <span className="font-medium text-ink/80">Postgres</span> (
+                <code className="rounded bg-fog px-1 py-0.5 text-xs">stripe_metrics</code>) for the selected range. Includes synthetic webhook rows in dev.
+              </p>
+              <p className="text-xs text-ink/50">
+                Date range: <span className="font-medium text-ink/70">{range.start}</span> →{" "}
+                <span className="font-medium text-ink/70">{range.end}</span>
+                {isInvalidRange ? <span className="text-crimson"> · Invalid range</span> : null}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <Button type="button" onClick={loadTrueNetMargin} disabled={trueNetLoading || isInvalidRange}>
+                {trueNetLoading ? "Loading…" : "Refresh from database"}
+              </Button>
+            </div>
+          </div>
+        </div>
 
-      
+        <div className="grid gap-6 px-6 py-6 md:px-8 md:py-8">
+          {trueNetStatus && (
+            <p className={`text-sm ${trueNetStatus.startsWith("Loaded") ? "text-emerald-800" : "text-ink/80"}`}>{trueNetStatus}</p>
+          )}
+          {trueNetLoading && <p className="text-sm text-ink/50">Loading stored metrics…</p>}
+          {!trueNetSummary && !trueNetLoading && !isInvalidRange && (
+            <p className="text-sm text-ink/55">
+              No rows in this window yet. Adjust dates or run a Stripe sync / mock webhook, then refresh.
+            </p>
+          )}
 
+          {trueNetSummary && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-fog bg-slate-50/50 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">Gross (window)</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ink md:text-2xl">
+                  {formatCurrency(trueNetSummary.gross, trueNetSummary.currency)}
+                </p>
+                <p className="mt-2 text-xs text-ink/55">Sum of gross_amount</p>
+              </div>
+              <div className="rounded-xl border border-fog bg-slate-50/50 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">Net (after fees)</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ink md:text-2xl">
+                  {formatCurrency(trueNetSummary.net, trueNetSummary.currency)}
+                </p>
+                <p className="mt-2 text-xs text-ink/55">After Stripe fees</p>
+              </div>
+              <div className="rounded-xl border border-fog bg-slate-50/50 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">Stripe fees (total)</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-ink md:text-2xl">
+                  {formatCurrency(trueNetSummary.fee, trueNetSummary.currency)}
+                </p>
+                <p className="mt-2 text-xs text-ink/55">Sum of stripe_fee</p>
+              </div>
+              <div className="rounded-xl border border-fog bg-violet-50/40 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">Blended margin</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-violet-950 md:text-2xl">
+                  {trueNetSummary.blendedMarginPct === null || trueNetSummary.blendedMarginPct === undefined
+                    ? "—"
+                    : formatPercent(trueNetSummary.blendedMarginPct)}
+                </p>
+                <p className="mt-2 text-xs text-ink/55">Net ÷ gross (window)</p>
+                <p className="mt-1 text-[11px] text-ink/45">Avg. row: {formatPercent(trueNetSummary.avgMargin)}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="max-h-[min(28rem,55vh)] overflow-auto rounded-xl border border-fog">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fog bg-fog/80 px-4 py-2.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/55">Transaction detail</span>
+              <span className="text-xs text-ink/45">Stripe API order</span>
+            </div>
+            <table className="w-full min-w-[520px] text-sm">
+              <thead className="sticky top-0 z-[1] bg-white text-xs uppercase tracking-wide text-ink/55 shadow-sm">
+                <tr className="border-b border-fog">
+                  <th className="px-4 py-3 text-left font-semibold">Date</th>
+                  <th className="px-4 py-3 text-right font-semibold">Gross</th>
+                  <th className="px-4 py-3 text-right font-semibold">Fee</th>
+                  <th className="px-4 py-3 text-right font-semibold">Net</th>
+                  <th className="px-4 py-3 text-right font-semibold">Margin %</th>
+                  <th className="px-4 py-3 text-right font-semibold">CCY</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {trueNetData?.items?.map((item, idx) => (
+                  <tr key={`${item.date}-${idx}`} className="border-t border-fog/80 odd:bg-slate-50/40">
+                    <td className="whitespace-nowrap px-4 py-2.5 text-ink/80">{new Date(item.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-2.5 text-right font-medium tabular-nums text-ink">{item.gross_amount.toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ink/75">{item.stripe_fee.toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right font-medium tabular-nums text-ink">{item.net_amount.toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ink/80">{formatPercent(item.margin_pct)}</td>
+                    <td className="px-4 py-2.5 text-right text-xs font-semibold uppercase text-ink/60">{item.currency}</td>
+                  </tr>
+                ))}
+                {!trueNetData?.items?.length && (
+                  <tr>
+                    <td className="px-4 py-10 text-center text-sm text-ink/50" colSpan={6}>
+                      No metrics in range. Widen dates or refresh after ingesting Stripe data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {data && (
+        <Card className="grid gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">New vs returning</h2>
+            <Badge tone={toneForConfidence(data.new_vs_returning.repeat_purchase_rate.confidence)}>
+              {data.new_vs_returning.repeat_purchase_rate.confidence}
+            </Badge>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <MetricCard
+              title="New customer revenue"
+              value={metricLabel(data.new_vs_returning.new_customer_revenue, formatCurrency)}
+              subtitle={metricNote(data.new_vs_returning.new_customer_revenue) || rangeLabel(data.new_vs_returning.new_customer_revenue)}
+            />
+            <MetricCard
+              title="Returning customer revenue"
+              value={metricLabel(data.new_vs_returning.returning_customer_revenue, formatCurrency)}
+              subtitle={metricNote(data.new_vs_returning.returning_customer_revenue) || rangeLabel(data.new_vs_returning.returning_customer_revenue)}
+            />
+            <MetricCard
+              title="New customer orders"
+              value={metricLabel(data.new_vs_returning.new_customer_orders, (value) => formatNumber(value))}
+              subtitle={metricNote(data.new_vs_returning.new_customer_orders) || rangeLabel(data.new_vs_returning.new_customer_orders)}
+            />
+            <MetricCard
+              title="Returning customer orders"
+              value={metricLabel(data.new_vs_returning.returning_customer_orders, (value) => formatNumber(value))}
+              subtitle={metricNote(data.new_vs_returning.returning_customer_orders) || rangeLabel(data.new_vs_returning.returning_customer_orders)}
+            />
+          </div>
+          <div className="grid gap-2 text-sm text-ink/70">
+            <span>New revenue share: {formatPercent(data.new_vs_returning.new_customer_revenue_pct.value)}</span>
+            <span>Returning revenue share: {formatPercent(data.new_vs_returning.returning_customer_revenue_pct.value)}</span>
+          </div>
+        </Card>
+      )}
 
       {error && (
         <Card className="grid gap-2 border-crimson/40 bg-crimson/5 text-crimson">
@@ -289,49 +449,13 @@ export default function SalesQualityPage() {
             <MetricCard title="Top 10 SKU share" value={metricLabel(data.kpis.top10_sku_share, (value) => formatPercent(value))} subtitle={metricNote(data.kpis.top10_sku_share) || rangeLabel(data.kpis.top10_sku_share)} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">New vs returning</h2>
-                <Badge tone={toneForConfidence(data.new_vs_returning.repeat_purchase_rate.confidence)}>
-                  {data.new_vs_returning.repeat_purchase_rate.confidence}
-                </Badge>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <MetricCard
-                  title="New customer revenue"
-                  value={metricLabel(data.new_vs_returning.new_customer_revenue, formatCurrency)}
-                  subtitle={metricNote(data.new_vs_returning.new_customer_revenue) || rangeLabel(data.new_vs_returning.new_customer_revenue)}
-                />
-                <MetricCard
-                  title="Returning customer revenue"
-                  value={metricLabel(data.new_vs_returning.returning_customer_revenue, formatCurrency)}
-                  subtitle={metricNote(data.new_vs_returning.returning_customer_revenue) || rangeLabel(data.new_vs_returning.returning_customer_revenue)}
-                />
-                <MetricCard
-                  title="New customer orders"
-                  value={metricLabel(data.new_vs_returning.new_customer_orders, (value) => formatNumber(value))}
-                  subtitle={metricNote(data.new_vs_returning.new_customer_orders) || rangeLabel(data.new_vs_returning.new_customer_orders)}
-                />
-                <MetricCard
-                  title="Returning customer orders"
-                  value={metricLabel(data.new_vs_returning.returning_customer_orders, (value) => formatNumber(value))}
-                  subtitle={metricNote(data.new_vs_returning.returning_customer_orders) || rangeLabel(data.new_vs_returning.returning_customer_orders)}
-                />
-              </div>
-              <div className="grid gap-2 text-sm text-ink/70">
-                <span>New revenue share: {formatPercent(data.new_vs_returning.new_customer_revenue_pct.value)}</span>
-                <span>Returning revenue share: {formatPercent(data.new_vs_returning.returning_customer_revenue_pct.value)}</span>
-              </div>
-            </Card>
-
-            <Card className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Channel mix</h2>
-                <Badge tone={toneForConfidence(data.channel_mix[0]?.net_sales.confidence || "Low")}>
-                  {data.channel_mix[0]?.net_sales.confidence || "Low"}
-                </Badge>
-              </div>
+          <Card className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Channel mix</h2>
+              <Badge tone={toneForConfidence(data.channel_mix[0]?.net_sales.confidence || "Low")}>
+                {data.channel_mix[0]?.net_sales.confidence || "Low"}
+              </Badge>
+            </div>
               <div className="grid gap-3">
                 {data.channel_mix.length === 0 && <p className="text-sm text-ink/60">Not available.</p>}
                 {data.channel_mix.map((item) => (
@@ -375,7 +499,6 @@ export default function SalesQualityPage() {
                 </div>
               )}
             </Card>
-          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="grid gap-4">
@@ -514,90 +637,6 @@ export default function SalesQualityPage() {
                 </div>
               )}
             </Card>
-<Card className="grid gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">True Net Margin (Stripe)</h2>
-            <p className="text-sm text-ink/70">Gross vs. net after Stripe fees for the selected window.</p>
-          </div>
-          <Button type="button" onClick={loadTrueNetMargin} disabled={trueNetLoading || isInvalidRange}>
-            {trueNetLoading ? "Loading..." : "Refresh / Load from DB"}
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-ink/60">Start date</label>
-            <Input type="date" value={range.start} onChange={(event) => setRange({ ...range, start: event.target.value })} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-ink/60">End date</label>
-            <Input type="date" value={range.end} onChange={(event) => setRange({ ...range, end: event.target.value })} />
-          </div>
-        </div>
-        {isInvalidRange && <span className="text-sm text-crimson">Start date must be before end date.</span>}
-        {trueNetStatus && <p className="text-sm text-ink/70">{trueNetStatus}</p>}
-        {!trueNetSummary && !trueNetLoading && (
-          <p className="text-sm text-ink/60">No True Net Margin data loaded yet.</p>
-        )}
-        {trueNetSummary && (
-          <div className="grid gap-4 md:grid-cols-4">
-            <MetricCard
-              title="Gross"
-              value={formatCurrency(trueNetSummary.gross, trueNetSummary.currency)}
-              subtitle={`${range.start} to ${range.end}`}
-            />
-            <MetricCard
-              title="Net"
-              value={formatCurrency(trueNetSummary.net, trueNetSummary.currency)}
-              subtitle="After fees"
-            />
-            <MetricCard
-              title="Avg margin"
-              value={formatPercent(trueNetSummary.avgMargin)}
-              subtitle="Avg per transaction"
-            />
-            <MetricCard
-              title="Margin %"
-              value={formatPercent(trueNetSummary.marginPct)}
-              subtitle="Net / Gross"
-            />
-          </div>
-        )}
-        <div className="overflow-hidden rounded-lg border border-fog">
-          <table className="w-full text-sm">
-            <thead className="bg-fog text-xs uppercase tracking-wide text-ink/60">
-              <tr>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-right">Gross</th>
-                <th className="px-3 py-2 text-right">Fee</th>
-                <th className="px-3 py-2 text-right">Net</th>
-                <th className="px-3 py-2 text-right">Margin %</th>
-                <th className="px-3 py-2 text-right">Currency</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trueNetData?.items?.map((item, idx) => (
-                <tr key={`${item.date}-${idx}`} className="border-t border-fog">
-                  <td className="px-3 py-2">{new Date(item.date).toLocaleDateString()}</td>
-                  <td className="px-3 py-2 text-right">{item.gross_amount.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{item.stripe_fee.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{item.net_amount.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{formatPercent(item.margin_pct)}</td>
-                  <td className="px-3 py-2 text-right">{item.currency}</td>
-                </tr>
-              ))}
-              {!trueNetData?.items?.length && (
-                <tr>
-                  <td className="px-3 py-6 text-center text-ink/60" colSpan={6}>
-                    No metrics loaded.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
           </div>
 
           <Card className="grid gap-2">

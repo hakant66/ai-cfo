@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
+from typing import Literal
 from pydantic import BaseModel
 import requests
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from app.models.models import Integration, IntegrationType, StripeMetric
 from app.models.models import utcnow
 from app.integrations.shopify import test_connection
 from app.worker import sync_shopify_data
+from app.services.stripe_webhook_incremental import run_synthetic_stripe_mock
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -33,6 +35,10 @@ class StripeSettingsRequest(BaseModel):
     stripe_account: str | None = None
     publishable_key: str | None = None
     secret_key: str | None = None
+
+
+class StripeDevMockWebhookRequest(BaseModel):
+    scenario: Literal["payout.paid", "refund.created", "charge.failed"]
 
 
 class StripeDateRangeRequest(BaseModel):
@@ -168,6 +174,7 @@ def stripe_settings(
         "stripe_account": credentials.get("stripe_account"),
         "has_publishable_key": bool(credentials.get("publishable_key")),
         "has_secret_key": bool(credentials.get("secret_key")),
+        "dev_mock_webhook_ui": bool(settings.stripe_dev_mock_ui_enabled),
     }
 
 
@@ -208,7 +215,20 @@ def stripe_save_settings(
         "stripe_account": credentials.get("stripe_account"),
         "has_publishable_key": bool(credentials.get("publishable_key")),
         "has_secret_key": bool(credentials.get("secret_key")),
+        "dev_mock_webhook_ui": bool(settings.stripe_dev_mock_ui_enabled),
     }
+
+
+@router.post("/stripe/dev/mock-webhook")
+def stripe_dev_mock_webhook(
+    payload: StripeDevMockWebhookRequest,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(["Founder", "Finance"])),
+):
+    """Dev-only: same synthetic ingestion as POST /webhooks/stripe/mock, scoped to the signed-in user's company."""
+    if not settings.stripe_dev_mock_ui_enabled:
+        raise HTTPException(status_code=404, detail="Not found")
+    return run_synthetic_stripe_mock(db, company_id=user.company_id, scenario=payload.scenario)
 
 
 @router.post("/stripe/balance-payouts")
@@ -233,7 +253,7 @@ def stripe_balance_payouts(
                 "start_date": payload.start_date,
                 "end_date": payload.end_date,
             },
-            timeout=60,
+            timeout=180,
         )
         response.raise_for_status()
     except requests.RequestException as exc:

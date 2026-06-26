@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_webhook_default_company_id: int | None = None
     mock_stripe_webhook_secret: str = ""
+    stripe_dev_mock_ui_enabled: bool = False
+    stripe_api_echo_after_synthetic: bool = False
     dify_external_kb_api_key: str = ""
 
     @field_validator("primary_company_id", "stripe_webhook_default_company_id", mode="before")
